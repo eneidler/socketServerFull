@@ -101,6 +101,8 @@ func (s *Server) handleClient(conn net.Conn) {
 			client.send(s.getClientList())
 		} else if strings.HasPrefix(message, "/time") {
 			client.send("Server time: " + time.Now().Format("15:04:05"))
+		} else if strings.HasPrefix(message, "/kick") {
+			s.handleKickClient(message, client)
 		} else {
 			// Broadcast regular message to all clients
 			fullMessage := fmt.Sprintf("[%s]: %s", client.nickname, message)
@@ -134,6 +136,47 @@ func (s *Server) removeClient(client *Client) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	delete(s.clients, client.conn)
+}
+
+// kickClient forcibly kicks client from the server and notifies them (thread-safe)
+func (s *Server) kickClient(nickname string) bool {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for conn, client := range s.clients {
+		if client.nickname == nickname {
+			client.send("You have been kicked!")
+
+			delete(s.clients, conn)
+
+			go func() {
+				err := conn.Close()
+				if err != nil {
+					return
+				}
+			}()
+
+			return true
+		}
+	}
+	return false
+}
+
+// handleKickClient handles the request to kick a client from the server
+func (s *Server) handleKickClient(message string, sender *Client) {
+	messageSplit := strings.SplitN(message, " ", 2)
+	if len(messageSplit) != 2 {
+		sender.send("Usage: /kick <nickname>")
+		return
+	}
+
+	targetNickname := messageSplit[1]
+
+	kicked := s.kickClient(targetNickname)
+	if kicked {
+		sender.send(fmt.Sprintf("You have kicked %s", targetNickname))
+		s.broadcast(fmt.Sprintf("%s was kicked by %s", targetNickname, sender.nickname), nil)
+	}
 }
 
 // broadcast sends a message to all connected clients except the sender
