@@ -38,7 +38,12 @@ func (s *Server) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
 	}
-	defer listener.Close()
+	defer func(listener net.Listener) {
+		err := listener.Close()
+		if err != nil {
+			fmt.Printf("failed to close listener: %v", err)
+		}
+	}(listener)
 
 	fmt.Printf("Socket server started on %s\n", s.address)
 
@@ -57,7 +62,12 @@ func (s *Server) Start() error {
 
 // handleClient manages communication with a single client
 func (s *Server) handleClient(conn net.Conn) {
-	defer conn.Close()
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			fmt.Printf("Error closing client connection: %v\n", err)
+		}
+	}(conn)
 
 	// Create new client
 	client := &Client{
